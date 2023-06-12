@@ -1,25 +1,27 @@
-import axios from 'axios';
-require('dotenv').config();
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const authTokenKey =
    'blabla'; /* Example of a bearer token stored in localStorage */
 
-/*Axios configuration*/
-const axiosInstance = axios.create({
+/* Axios configuration */
+const axiosInstance: AxiosInstance = axios.create({
    baseURL: process.env.REACT_APP_API_URL,
 });
 
-export const configWithAuthorization = {
+export const configWithAuthorization: AxiosRequestConfig = {
    _withAuthorization: true,
-}; /* This will be used to specify that the request need to include the auth token */
+}; /* This will be used to specify that the request needs to include the auth token */
 
-const withAuthorization = (config = {}) => {
+const withAuthorization = (config: AxiosRequestConfig): boolean => {
    return (
       config.hasOwnProperty('_withAuthorization') && config._withAuthorization
    );
 };
 
-const interceptRequest = request => {
+const interceptRequest = (request: AxiosRequestConfig): AxiosRequestConfig => {
    if (withAuthorization(request)) {
       const token = localStorage.getItem(authTokenKey);
       if (!!token) {
@@ -29,11 +31,13 @@ const interceptRequest = request => {
    return request;
 };
 
-const interceptResponseOnFullfilled = response => {
+const interceptResponseOnFullfilled = (
+   response: AxiosResponse
+): Result<any> => {
    return new Result(response.data, null, response.headers);
 };
 
-const interceptResponseOnRejected = error => {
+const interceptResponseOnRejected = (error: any): Result<any> => {
    if (
       error.response &&
       error.response.headers['WWW-Authenticate'.toLowerCase()]
@@ -68,11 +72,7 @@ const interceptResponseOnRejected = error => {
    } else {
       appError = new AppError(error.message);
    }
-   return new Result(
-      null,
-      appError,
-      headers
-   ); /* Nota : use 'Promise.reject' if you need to get the response in Promise.catch (or try-catch with await syntax)  */
+   return new Result(null, appError, headers);
 };
 
 axiosInstance.interceptors.request.use(interceptRequest);
@@ -83,16 +83,16 @@ axiosInstance.interceptors.response.use(
 );
 
 const requestConfigFactory = (
-   params = null,
-   headers = null,
+   params: AxiosRequestConfig['params'],
+   headers: AxiosRequestConfig['headers'],
    withAuthorization = false
-) => {
-   const config = {};
+): AxiosRequestConfig => {
+   const config: AxiosRequestConfig = {};
    if (params) {
       config.params = params;
    }
    if (headers) {
-      config.headers = params;
+      config.headers = headers;
    }
    if (withAuthorization) {
       config._withAuthorization =
@@ -101,86 +101,85 @@ const requestConfigFactory = (
    return config;
 };
 
-/*HttpHelper*/
+/* HttpHelper */
 class HttpHelper {
-   static async getAsync(
-      url,
-      params = null,
-      requestHeaders = null,
+   static async getAsync<T>(
+      url: string,
+      params?: AxiosRequestConfig['params'],
+      requestHeaders?: AxiosRequestConfig['headers'],
       withAuthorization = false
-   ) {
+   ): Promise<Result<T>> {
       const config = requestConfigFactory(
          params,
          requestHeaders,
          withAuthorization
       );
-      const { payload, error, headers } = await axiosInstance.get(url, config);
-      return new Result(
-         payload,
-         error,
-         headers
-      ); /* This is a hack, because axions cannot infer the type returned from interceptors. */
+      const { payload, error, headers } = await axiosInstance.get<T>(
+         url,
+         config
+      );
+      return new Result<T>(payload, error, headers);
    }
 
-   static async postAsync(
-      url,
-      data = null,
-      requestHeaders = null,
+   static async postAsync<T>(
+      url: string,
+      data?: any,
+      requestHeaders?: AxiosRequestConfig['headers'],
       withAuthorization = false
-   ) {
+   ): Promise<Result<T>> {
       const config = requestConfigFactory(
          null,
          requestHeaders,
          withAuthorization
       );
-      const { payload, error, headers } = await axiosInstance.post(
+      const { payload, error, headers } = await axiosInstance.post<T>(
          url,
          data,
          config
       );
-      return new Result(payload, error, headers);
+      return new Result<T>(payload, error, headers);
    }
 
-   static async putAsync(
-      url,
-      data = null,
-      requestHeaders = null,
+   static async putAsync<T>(
+      url: string,
+      data?: any,
+      requestHeaders?: AxiosRequestConfig['headers'],
       withAuthorization = false
-   ) {
+   ): Promise<Result<T>> {
       const config = requestConfigFactory(
          null,
          requestHeaders,
          withAuthorization
       );
-      const { payload, error, headers } = await axiosInstance.put(
+      const { payload, error, headers } = await axiosInstance.put<T>(
          url,
          data,
          config
       );
-      return new Result(payload, error, headers);
+      return new Result<T>(payload, error, headers);
    }
 
-   static async deleteAsync(
-      url,
-      requestHeaders = null,
+   static async deleteAsync<T>(
+      url: string,
+      requestHeaders?: AxiosRequestConfig['headers'],
       withAuthorization = false
-   ) {
+   ): Promise<Result<T>> {
       const config = requestConfigFactory(
          null,
          requestHeaders,
          withAuthorization
       );
-      const { payload, error, headers } = await axiosInstance.delete(
+      const { payload, error, headers } = await axiosInstance.delete<T>(
          url,
          config
       );
-      return new Result(payload, error, headers);
+      return new Result<T>(payload, error, headers);
    }
 }
 
 export default HttpHelper;
 
-/*Constants*/
+/* Constants */
 export const Status = {
    Ok: 200,
    Unassigned: 299,
@@ -212,40 +211,36 @@ export const Credentials = {
    Omit: 'omit',
 };
 
-/*Types*/
-export class Result {
-   constructor(payload = null, error = null, headers = null) {
+/* Types */
+export class Result<T> {
+   constructor(
+      public payload: T | null = null,
+      public error: AppError | null = null,
+      public headers: any = null
+   ) {
       this.succeeded = error === null || error === undefined;
-      this.payload = payload;
-      this.error = error;
-      this.headers = headers;
    }
-   succeeded;
-   payload;
-   error; /* AppError : check using 'instanceof' to get the status */
-   headers;
+   public succeeded: boolean;
 }
 
 export class AppError {
-   constructor(body = null) {
-      this.body = body;
-   }
+   constructor(public body: any = null) {}
 }
 
 export class NotFoundError extends AppError {
-   constructor(body = null) {
+   constructor(body: any = null) {
       super(body);
    }
 }
 
 export class BadRequestError extends AppError {
-   constructor(body = null) {
+   constructor(body: any = null) {
       super(body);
    }
 }
 
 export class UnauthorizedError extends AppError {
-   constructor(body = null) {
+   constructor(body: any = null) {
       super(body);
    }
 }
